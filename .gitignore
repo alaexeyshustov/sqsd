@@ -16,3 +16,7 @@
 /pkg
 
 .env
+
+.idea
+.idea/*
+

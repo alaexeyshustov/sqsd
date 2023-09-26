@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding"
 	"flag"
+	"fmt"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"log"
 	"log/slog"
 	"os"
@@ -55,6 +57,7 @@ type config struct {
 	LogLevel        slog.Level
 	RedisLocker     *redisLocker
 	Region          awsConf
+	Profile         string
 	Endpoint        awsConf
 }
 
@@ -70,6 +73,7 @@ func (c *config) Load() error {
 	if err := typedenv.Scan(
 		typedenv.RequiredDirect("INVOKER_URL", &c.RawURL),
 		typedenv.RequiredDirect("QUEUE_URL", &c.QueueURL),
+		typedenv.RequiredDirect("SSO_PROFILE", &c.Profile),
 		typedenv.DefaultDirect("INVOKER_TIMEOUT", &c.Duration, "60s"),
 		typedenv.DefaultDirect("UNLOCK_INTERVAL", &c.UnlockInterval, "1m"),
 		typedenv.DefaultDirect("LOCK_EXPIRE", &c.LockExpire, "24h"),
@@ -109,11 +113,32 @@ func main() {
 
 	logger := sqsd.NewLogger(slogHandlerOpts, os.Stderr, "sqsd-main")
 
+	sess, err := session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable, // Must be set to enable
+		Profile:           args.Profile,
+	})
+	if err != nil {
+		fmt.Println("error:", err)
+		os.Exit(1)
+	}
+
+	client := sts.New(sess)
+
+	identity, err := client.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+	if err != nil {
+		fmt.Println("error:", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf(
+		"Account: %s\nUserID: %s\nARN: %s\n",
+		aws.StringValue(identity.Account),
+		aws.StringValue(identity.UserId),
+		aws.StringValue(identity.Arn),
+	)
+
 	queue := sqs.New(
-		session.Must(session.NewSession(
-			args.Region.Config,
-			aws.NewConfig().WithCredentialsChainVerboseErrors(true),
-		)),
+		sess,
 		args.Endpoint.Config,
 	)
 

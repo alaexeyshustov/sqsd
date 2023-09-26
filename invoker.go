@@ -42,6 +42,7 @@ func (ivk *HTTPInvoker) Invoke(ctx context.Context, q Message) error {
 		return err
 	}
 	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("X_AWS_SQSD_MSGID", q.ID)
 	resp, err := ivk.cli.Do(req)
 	if err != nil {
 		return err
